@@ -125,22 +125,20 @@ if __name__ == "__main__":
         
     # let's generate outputs    
     data = pd.read_csv(f"../../data/clean/{args.platform}_{args.topic}.csv")
+    # for timing reasons we only take 10000 samples randomly
+    sampled_data = data.sample(n=10000, random_state=42)
     n_instances_processed = 0
     json_data = []
     
     full_model_name = "mistralai/Mistral-7B-Instruct-v0.2"
-    #tokenizer = AutoTokenizer.from_pretrained(full_model_name, trust_remote_code=True)
-    #tokenizer.pad_token = tokenizer.eos_token
-    #pipe = pipeline("text-generation", model=full_model_name, device="cuda", tokenizer=tokenizer, pad_token_id=tokenizer.eos_token_id, max_new_tokens=25)
-
     tokenizer = AutoTokenizer.from_pretrained(full_model_name, trust_remote_code=True)
     tokenizer.pad_token = tokenizer.eos_token
-    model = AutoModelForCausalLM.from_pretrained(full_model_name, load_in_8bit=True, device_map='auto')
-    pipe = pipeline("text-generation", model=model, device="cuda", tokenizer=tokenizer, pad_token_id=tokenizer.eos_token_id, max_new_tokens=25)
+    model = AutoModelForCausalLM.from_pretrained(full_model_name, load_in_4bit=True, device_map='auto')
+    pipe = pipeline("text-generation", model=model, tokenizer=tokenizer, pad_token_id=tokenizer.eos_token_id, max_new_tokens=25)
 
     
     with open(f"{output_file_path}/output.txt", "a") as fa_txt, open(f"{output_file_path}/output.json", "w") as fw_json:
-        for instance in tqdm(data.itertuples(index=True, name='Pandas'), total=len(data)):
+        for instance in tqdm(sampled_data.itertuples(index=True, name='Pandas'), total=len(sampled_data)):
             
             instance_id = instance.id
             prompt = PROMPT.format(text=instance.text)
