@@ -1,6 +1,6 @@
 import pandas as pd
 import os
-from transformers import pipeline, AutoTokenizer
+from transformers import pipeline, AutoTokenizer, AutoModelForCausalLM
 import time
 import argparse
 import json
@@ -129,10 +129,16 @@ if __name__ == "__main__":
     json_data = []
     
     full_model_name = "mistralai/Mistral-7B-Instruct-v0.2"
+    #tokenizer = AutoTokenizer.from_pretrained(full_model_name, trust_remote_code=True)
+    #tokenizer.pad_token = tokenizer.eos_token
+    #pipe = pipeline("text-generation", model=full_model_name, device="cuda", tokenizer=tokenizer, pad_token_id=tokenizer.eos_token_id, max_new_tokens=25)
+
     tokenizer = AutoTokenizer.from_pretrained(full_model_name, trust_remote_code=True)
     tokenizer.pad_token = tokenizer.eos_token
-    pipe = pipeline("text-generation", model=full_model_name, device="cuda", tokenizer=tokenizer, pad_token_id=tokenizer.eos_token_id, max_new_tokens=25)
+    model = AutoModelForCausalLM.from_pretrained(full_model_name, load_in_8bit=True, device_map='auto')
+    pipe = pipeline("text-generation", model=model, device="cuda", tokenizer=tokenizer, pad_token_id=tokenizer.eos_token_id, max_new_tokens=25)
 
+    
     with open(f"{output_file_path}/output.txt", "a") as fa_txt, open(f"{output_file_path}/output.json", "w") as fw_json:
         for instance in tqdm(data.itertuples(index=True, name='Pandas'), total=len(data)):
             
