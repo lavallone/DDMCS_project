@@ -2,9 +2,9 @@ import pandas as pd
 import os
 from transformers import pipeline, AutoTokenizer, AutoModelForCausalLM
 import time
-import argparse
 import json
 from tqdm import tqdm
+import numpy as np
 
 ## QUANTITATIVE ANALYSIS
 
@@ -93,24 +93,84 @@ def process_daily_user_counts(platform, topic, output_file):
         
 ## SENTIMENT ANALYSIS
 
+def process_sentiment(platform, topic,  output_file):
+    sentiment_task = pipeline("sentiment-analysis", model="cardiffnlp/twitter-roberta-base-sentiment-latest", tokenizer="cardiffnlp/twitter-roberta-base-sentiment-latest", device="cuda")
+    
+    data = pd.read_csv(f"../../data/clean/{platform}_{topic}.csv")
+    data['clean_text'] = data['clean_text'].apply(lambda x: x if isinstance(x, str) else np.nan)
+    data = data.dropna(subset=['clean_text'])
+    #data = data.sample(n=10000, random_state=99)
+    
+    labels = []
+    for instance in tqdm(data.itertuples(index=True, name='Pandas'), total=len(data)):
+        text = str(instance.clean_text)[:300]
+        labels.append(sentiment_task(text)[0]["label"])
+        
+    data["sentiment"] = labels
+    data = data[["id", "clean_text", "sentiment"]]
+    data.rename(columns={'clean_text': 'text'}, inplace=True)
+    data['platform'] = platform
+    data['topic'] = topic
+    if os.path.exists(output_file):
+        existing_data = pd.read_csv(output_file)
+        data = pd.concat([existing_data, data])
+    
+    data.to_csv(output_file, index=False)
+    
+def process_emotion(platform, topic,  output_file):
+    emotion_task = pipeline("text-classification", model="cardiffnlp/twitter-roberta-base-emotion-multilabel-latest", tokenizer="cardiffnlp/twitter-roberta-base-emotion-multilabel-latest", device="cuda")
+    
+    data = pd.read_csv(f"../../data/clean/{platform}_{topic}.csv")
+    data['clean_text'] = data['clean_text'].apply(lambda x: x if isinstance(x, str) else np.nan)
+    data = data.dropna(subset=['clean_text'])
+    #data = data.sample(n=10000, random_state=99)
+    
+    labels = []
+    for instance in tqdm(data.itertuples(index=True, name='Pandas'), total=len(data)):
+        text = str(instance.clean_text)[:300]
+        labels.append(emotion_task(text)[0]["label"])
+        
+    data["emotion"] = labels
+    data = data[["id", "clean_text", "emotion"]]
+    data.rename(columns={'clean_text': 'text'}, inplace=True)
+    data['platform'] = platform
+    data['topic'] = topic
+    if os.path.exists(output_file):
+        existing_data = pd.read_csv(output_file)
+        data = pd.concat([existing_data, data])
+    
+    data.to_csv(output_file, index=False)
 
-
-
-if __name__ == "__main__":
+def process_LLM_conversation_type(platform, topic,  sentiment_data, emotion_data):
+    LLM_output_path = f"../../data/LLM_output/{platform}/{topic}/output.json"
+    
+    labels = []
+    with open(LLM_output_path, "r") as json_file:
+        LLM_output_data = json.load(json_file)
+        for instance in tqdm(LLM_output_data):
+            if "IMAGE GENERATION" in instance["answer"].upper() and "EDUCATION" not in instance["answer"].upper() and "CREATIVE WRITING" not in instance["answer"].upper():
+                sentiment_data.loc[sentiment_data['id'] == instance["instance_id"], 'category'] = "IMAGE_GENERATION"
+                emotion_data.loc[emotion_data['id'] == instance["instance_id"], 'category'] = "IMAGE_GENERATION"
+            elif "EDUCATION" in instance["answer"].upper() and "IMAGE GENERATION" not in instance["answer"].upper() and "CREATIVE WRITING" not in instance["answer"].upper():
+                sentiment_data.loc[sentiment_data['id'] == instance["instance_id"], 'category'] = "EDUCATION"
+                emotion_data.loc[emotion_data['id'] == instance["instance_id"], 'category'] = "EDUCATION"
+            elif "CREATIVE WRITING" in instance["answer"].upper() and "IMAGE GENERATION" not in instance["answer"].upper() and "EDUCATION" not in instance["answer"].upper():
+                sentiment_data.loc[sentiment_data['id'] == instance["instance_id"], 'category'] = "CREATIVE_WRITING"
+                emotion_data.loc[emotion_data['id'] == instance["instance_id"], 'category'] = "CREATIVE_WRITING"
+            else: continue
+    
+    return sentiment_data, emotion_data
+    
+def LLM_generation(platform, topic):
     
     PROMPT = """Question: The text "{text}" is a conversation about ChatGPT and Large Language Models. \nGiven the following conversation categories and their definitions: \n1) IMAGE GENERATION: comments about the use of advanced tools for creating visuals like DALLE-2, Midjourney or Stable Diffusion. \n2)EDUCATION: discussions about issues like plagiarism and AI-generated essays, students leveraging LLMs to cheat on assignments or LLMs utility in answering math and physics questions. \n3)CREATIVE WRITING: discussions related to various forms of written art, poetry, songs, screenplays and writing books.\n Outputs only one category for the above conversation. If you do not know the answer, do not answer. Do not motivate your anser. Answer: """
     
-    parser = argparse.ArgumentParser()
-    parser.add_argument("--platform", "-p", type=str)
-    parser.add_argument("--topic", "-t", type=str)
-    args = parser.parse_args()
-    
-    output_file_path = f"../../data/LLM_output/{args.platform}/{args.topic}/"
+    output_file_path = f"../../data/LLM_output/{platform}/{topic}/"
     # to manage creation/deletion of folders
     if not os.path.exists(f"../../data/LLM_output/"):
         os.system(f"mkdir ../../data/LLM_output/")
-    if not os.path.exists(f"../../data/LLM_output/{args.platform}/"):
-        os.system(f"mkdir ../../data/LLM_output/{args.platform}/")
+    if not os.path.exists(f"../../data/LLM_output/{platform}/"):
+        os.system(f"mkdir ../../data/LLM_output/{platform}/")
     if not os.path.exists(output_file_path):
         os.system(f"mkdir {output_file_path}")
     elif os.path.exists(f"{output_file_path}/output.txt"):
@@ -124,10 +184,9 @@ if __name__ == "__main__":
         os.system(f"rm -r {output_file_path}/*")
         
     # let's generate outputs    
-    data = pd.read_csv(f"../../data/clean/{args.platform}_{args.topic}.csv")
+    data = pd.read_csv(f"../../data/clean/{platform}_{topic}.csv")
     # for timing reasons we only take 10000 samples randomly
-    sampled_data = data.sample(n=10000, random_state=42)
-    n_instances_processed = 0
+    sampled_data = data.sample(n=10000, random_state=99)
     json_data = []
     
     full_model_name = "mistralai/Mistral-7B-Instruct-v0.2"

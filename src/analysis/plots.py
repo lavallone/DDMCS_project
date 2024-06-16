@@ -13,6 +13,18 @@ PLATFORM_DISPLAY_NAMES = {
     "ig": "Instagram",
 }
 
+TOPIC_DISPLAY_NAMES = {
+    "gpt3": "GPT 3.5",
+    "gpt4": "GPT 4",
+    "apple": "Apple Vision Pro"
+}
+
+SENTIMENT_DISPLAY_NAMES = {
+    "positive": "POSITIVE",
+    "neutral": "NEUTRAL",
+    "Negative": "NEGATIVE"
+}
+
 def _assign_platform_colors(color_palette):
         platform_list = list(PLATFORM_DISPLAY_NAMES.values())
         return {platform: color for platform, color in zip(platform_list, color_palette)}
@@ -24,6 +36,8 @@ def _replace_platform_names(data):
 
 platform_colors = _assign_platform_colors(sns.color_palette("muted", 2))
 ##############################################################################
+
+## QUANTITATIVE ANALYSIS
 
 def plot_daily_posts(line_data, ax, topic):
     line_data = _replace_platform_names(line_data)
@@ -247,3 +261,126 @@ class LogisticModel:
             print(f"Finished plotting {platform}")
             print("-" * 100)
         fig.tight_layout()
+        
+
+## SENTIMENT ANALYSIS
+
+def reactions_pie_chart(topic, ax):
+    titles = {"gpt3" : f'GPT 3.5 Facebook Reactions', "gpt4" : f'GPT 4 Facebook Reactions', "apple" : f'Apple Vision Pro Facebook Reactions'}
+    data = pd.read_csv(f"../../data/clean/fb_{topic}.csv")
+    
+    columns_of_interest = ['Love', 'Wow', 'Haha', 'Sad', 'Angry', 'Care']
+    values = data[columns_of_interest].sum()
+    
+    # Plot the pie chart on the corresponding subplot
+    ax.pie(values, labels=columns_of_interest, autopct='%1.1f%%', startangle=140, colors=sns.color_palette("pastel"))
+    ax.set_title(titles[topic])
+
+def emotions_bar_plot(emotion_data):
+    emotion_data.loc[:, "topic"] = emotion_data["topic"].replace(TOPIC_DISPLAY_NAMES)
+    
+    def normalize_data(data):
+        # calculate the counts of each emotion for each topic
+        emotion_counts = data.groupby(['topic', 'emotion']).size().reset_index(name='count')
+        # calculate the total counts for each topic
+        total_counts = data['topic'].value_counts().reset_index()
+        total_counts.columns = ['topic', 'total_count']
+        # merge the emotion counts with the total counts
+        emotion_counts = emotion_counts.merge(total_counts, on='topic')
+        # normalize the counts by dividing by the total counts
+        emotion_counts['normalized_count'] = emotion_counts['count'] / emotion_counts['total_count']
+        return emotion_counts
+    # normalize data
+    fb_data = normalize_data(emotion_data[emotion_data['platform'] == 'fb'])
+    insta_data = normalize_data(emotion_data[emotion_data['platform'] == 'ig'])
+
+    _, axes = plt.subplots(1, 2, figsize=(20, 8), sharey=True)
+    # plot for Facebook
+    sns.barplot(x='topic', y='normalized_count', hue='emotion', data=fb_data, palette='pastel', ax=axes[0])
+    axes[0].set_title('Facebook')
+    axes[0].set_xlabel('Topic')
+    axes[0].set_ylabel('')
+    axes[0].legend(title='Emotion', bbox_to_anchor=(1.05, 1), loc='upper left')
+    # plot for Instagram
+    sns.barplot(x='topic', y='normalized_count', hue='emotion', data=insta_data, palette='pastel', ax=axes[1])
+    axes[1].set_title('Instagram')
+    axes[1].set_xlabel('Topic')
+    axes[1].set_ylabel('')
+    axes[1].legend(title='Emotion', bbox_to_anchor=(1.05, 1), loc='upper left')
+
+    plt.tight_layout()
+    plt.show()
+
+def sentiments_conf_matrix(sentiment_data):
+    sentiment_data.loc[:, "topic"] = sentiment_data["topic"].replace(TOPIC_DISPLAY_NAMES)
+    sentiment_data.loc[:, "sentiment"] = sentiment_data["sentiment"].replace(SENTIMENT_DISPLAY_NAMES)
+
+    def create_confusion_matrix(df, platform):
+        platform_df = df[df['platform'] == platform]
+        confusion_df = pd.crosstab(platform_df['topic'], platform_df['sentiment'], normalize='index')
+        return confusion_df
+
+    # create confusion matrices for Facebook and Instagram
+    fb_confusion_matrix = create_confusion_matrix(sentiment_data, 'fb')
+    insta_confusion_matrix = create_confusion_matrix(sentiment_data, 'ig')
+
+    _, axes = plt.subplots(1, 2, figsize=(20, 8), sharey=True)
+    # plot for Facebook
+    sns.heatmap(fb_confusion_matrix, annot=True, cmap='Greens', ax=axes[0])
+    axes[0].set_title('Facebook')
+    axes[0].set_xlabel('Sentiment')
+    axes[1].set_ylabel('Topic')
+    for text in axes[0].texts: text.set_fontsize(16)
+    # plot for Instagram
+    sns.heatmap(insta_confusion_matrix, annot=True, cmap='Greens', ax=axes[1])
+    axes[1].set_title('Instagram')
+    axes[1].set_xlabel('Sentiment')
+    axes[1].set_ylabel('Topic')
+    for text in axes[1].texts: text.set_fontsize(16)
+
+    plt.tight_layout()
+    plt.show()
+
+# here we generate two kind of plots
+def plot_LLM_conversations(sentiment_data):
+    ## CONFUSION MATRIX
+    sentiment_data.loc[:, "topic"] = sentiment_data["topic"].replace(TOPIC_DISPLAY_NAMES)
+    sentiment_data = sentiment_data.dropna(subset=['category'])
+
+    def create_confusion_matrix(df, platform):
+        platform_df = df[df['platform'] == platform]
+        confusion_df = pd.crosstab(platform_df['category'], platform_df['topic'], normalize='index')
+        return confusion_df
+
+    # create confusion matrices for Facebook and Instagram
+    fb_confusion_matrix = create_confusion_matrix(sentiment_data, 'fb')
+    insta_confusion_matrix = create_confusion_matrix(sentiment_data, 'ig')
+
+    _, axes = plt.subplots(1, 2, figsize=(20, 8), sharey=True)
+    # plot for Facebook
+    sns.heatmap(fb_confusion_matrix, annot=True, cmap='Blues', ax=axes[0])
+    axes[0].set_title('Facebook')
+    axes[0].set_xlabel('Topic')
+    axes[0].set_ylabel('Category')
+    for text in axes[0].texts: text.set_fontsize(16)
+    # plot for Instagram
+    sns.heatmap(insta_confusion_matrix, annot=True, cmap='Blues', ax=axes[1])
+    axes[1].set_title('Instagram')
+    axes[1].set_xlabel('Topic')
+    axes[1].set_ylabel('Category')
+    for text in axes[1].texts: text.set_fontsize(16)
+    
+    plt.tight_layout()
+    plt.show()
+    
+    ## VIOLIN PLOT
+
+    sns.set_palette('pastel')
+    _, axes = plt.subplots(1, 2, figsize=(20, 8), sharey=True)
+    
+    topics = sentiment_data['topic'].unique()
+    for ax, topic in zip(axes, topics):
+        topic_data = sentiment_data[sentiment_data['topic'] == topic]
+        
+        sns.violinplot(data=topic_data, x='category', y='sentiment',  ax=ax, split=True)
+        ax.set_xlabel('Sentiment Classes')

@@ -87,7 +87,6 @@ def filter_language(data):
     return data
     
 def clean_text(text):
-    
     def base_cleaning(text):
         # remove emojis
         emoji_pattern = re.compile(
