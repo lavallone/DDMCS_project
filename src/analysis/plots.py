@@ -22,7 +22,7 @@ TOPIC_DISPLAY_NAMES = {
 SENTIMENT_DISPLAY_NAMES = {
     "positive": "POSITIVE",
     "neutral": "NEUTRAL",
-    "Negative": "NEGATIVE"
+    "negative": "NEGATIVE"
 }
 
 def _assign_platform_colors(color_palette):
@@ -343,44 +343,44 @@ def sentiments_conf_matrix(sentiment_data):
 
 # here we generate two kind of plots
 def plot_LLM_conversations(sentiment_data):
+    
     ## CONFUSION MATRIX
-    sentiment_data.loc[:, "topic"] = sentiment_data["topic"].replace(TOPIC_DISPLAY_NAMES)
+    
+    sentiment_data.loc[:, "platform"] = sentiment_data["platform"].replace(PLATFORM_DISPLAY_NAMES)
     sentiment_data = sentiment_data.dropna(subset=['category'])
 
-    def create_confusion_matrix(df, platform):
-        platform_df = df[df['platform'] == platform]
-        confusion_df = pd.crosstab(platform_df['category'], platform_df['topic'], normalize='index')
+    def create_confusion_matrix(df, topic):
+        topic_df = df[df['topic'] == topic]
+        confusion_df = pd.crosstab(topic_df['category'], topic_df['platform'], normalize='index')
         return confusion_df
-
-    # create confusion matrices for Facebook and Instagram
-    fb_confusion_matrix = create_confusion_matrix(sentiment_data, 'fb')
-    insta_confusion_matrix = create_confusion_matrix(sentiment_data, 'ig')
-
-    _, axes = plt.subplots(1, 2, figsize=(20, 8), sharey=True)
-    # plot for Facebook
-    sns.heatmap(fb_confusion_matrix, annot=True, cmap='Blues', ax=axes[0])
-    axes[0].set_title('Facebook')
-    axes[0].set_xlabel('Topic')
-    axes[0].set_ylabel('Category')
-    for text in axes[0].texts: text.set_fontsize(16)
-    # plot for Instagram
-    sns.heatmap(insta_confusion_matrix, annot=True, cmap='Blues', ax=axes[1])
-    axes[1].set_title('Instagram')
-    axes[1].set_xlabel('Topic')
-    axes[1].set_ylabel('Category')
-    for text in axes[1].texts: text.set_fontsize(16)
     
+    topics = ['gpt3', 'gpt4']
+    confusion_matrices = {topic: create_confusion_matrix(sentiment_data, topic) for topic in topics}
+    _, axes = plt.subplots(1, 2, figsize=(20, 8), sharey=True)
+    for i, topic in enumerate(topics):
+        sns.heatmap(confusion_matrices[topic], annot=True, cmap='Blues', ax=axes[i])
+        title = "GPT 3.5" if  topic=='gpt3' else "GPT 4"
+        axes[i].set_title(title)
+        axes[i].set_xlabel('Platform')
+        axes[i].set_ylabel('Category')
+        for text in axes[i].texts: text.set_fontsize(16)
+
     plt.tight_layout()
     plt.show()
     
+    
     ## VIOLIN PLOT
 
+    sentiment_data.loc[:, "sentiment"] = sentiment_data["sentiment"].replace(SENTIMENT_DISPLAY_NAMES)
+    category_order = sorted(sentiment_data['category'].unique())
     sns.set_palette('pastel')
     _, axes = plt.subplots(1, 2, figsize=(20, 8), sharey=True)
     
-    topics = sentiment_data['topic'].unique()
-    for ax, topic in zip(axes, topics):
-        topic_data = sentiment_data[sentiment_data['topic'] == topic]
+    platforms = sentiment_data['platform'].unique()
+    for ax, platform in zip(axes, platforms):
+        platform_data = sentiment_data[sentiment_data['platform'] == platform]
         
-        sns.violinplot(data=topic_data, x='category', y='sentiment',  ax=ax, split=True)
-        ax.set_xlabel('Sentiment Classes')
+        sns.violinplot(data=platform_data, x='category', y='sentiment',  ax=ax, split=True, order=category_order)
+        ax.set_title(platform)
+        ax.set_ylabel('')
+        ax.set_xlabel('ChatGPT Conversations Categories')
